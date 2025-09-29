@@ -115,7 +115,7 @@ local onTooltip = function(e)
 		Utility.Log.debug("Lock Level = %d", ld.lockLevel)
 	end
 
-	if detected ~= nil and ld:getInExterior() then
+	if detected ~= nil then
 		if (mwse.simulateTimers.clock > ld:getDetectedAt() + Config.forgetDuration)
 			or (ld:getDetectedAt() < invalidationTime) then
 			-- The tooltip should have been forgotten already but hasn't been for whatever reason.
@@ -152,12 +152,7 @@ local onCellChange = function(e)
 	-- should be skipped
 	if not e.previousCell then return end;
 
-	-- On transitioning from interior -> exterior or vice versa, clear all known
-	-- cached lock data
-	if (e.previousCell.isInterior and not e.cell.isInterior)
-		or (not e.previousCell.isInterior and e.cell.isInterior) then
-		LockData.forgetAllKnownData();
-	end
+	LockData.forgetAllKnownData();
 end
 
 local onPickUsed = function(e)

@@ -2,8 +2,10 @@ local Config = require("AdituV.DetectTrap.Config");
 local MobilePlayer = require("AdituV.DetectTrap.MobilePlayer");
 local Utility = require("AdituV.DetectTrap.Utility");
 
+---@class LocksAndTrapsDetection.LockData
 local LockData = {
 	-- The parent reference this LockData belongs to
+	---@type tes3reference
 	parent = nil,
 
 	-- Basic lock info, from the LockAttachment
@@ -23,6 +25,7 @@ local LockData = {
 	-- maxLock = 0
 };
 
+---@type { lock: LocksAndTrapsDetection.LockData }[]
 local knownLocks = {};
 
 -- Returns true if `ref` is of an object type that can have lock data
@@ -43,13 +46,8 @@ end
 
 -- Removes the extra LockData-related information from the reference's data field,
 -- so it will no longer persist in the save game file.
+---@param self LocksAndTrapsDetection.LockData
 local clearExtraData = function(self)
-	local extraData = self.parent.data.DT;
-	if extraData then
-		for k, _ in pairs(extraData) do
-			extraData[k] = nil;
-		end
-	end
 	self.parent.data.DT = nil;
 
 	-- Set to nil instead of {} so that the cache can be garbage collected,
@@ -134,36 +132,18 @@ end
 function LockData:setTrapDetected(value)
 	if value == nil then
 		clearExtraData(self);
-	else
-		local extraData = getExtraData(self);
-		local lockTimer
-
-		Utility.Log.debug("setTrapDetected called");
-
-		extraData.trapDetected = value;
-		self:setPlayerSkill(MobilePlayer.getEffectiveSecurityLevel());
-
-		-- If a detection (or attempt) has happened, and the reference is located in
-		-- an exterior cell, keep track of the time the attempt happened at so
-		-- the player can forget it after a set time
-		if self:getInExterior() then
-			self:setDetectedAt(mwse.simulateTimers.clock);
-
-			-- Also set a timer to delete the data, to try to not bloat the saved game
-			-- too much
-			lockTimer = timer.start({
-				duration = Config.forgetDuration,
-				callback = function()
-					clearExtraData(self)
-				end
-			});
-		end
-
-		knownLocks[#knownLocks + 1] = {
-			lock = self,
-			timer = lockTimer
-		};
+		return
 	end
+
+	local extraData = getExtraData(self);
+	Utility.Log.debug("setTrapDetected called");
+
+	extraData.trapDetected = value;
+	self:setPlayerSkill(MobilePlayer.getEffectiveSecurityLevel());
+	self:setDetectedAt(mwse.simulateTimers.clock);
+	knownLocks[#knownLocks + 1] = {
+		lock = self
+	};
 end
 
 -- playerSkill
@@ -176,13 +156,6 @@ end
 function LockData:setPlayerSkill(value)
 	local extraData = getExtraData(self);
 	extraData.playerSkill = value;
-end
-
--- InExterior
--- Whether the locked reference is located in an external cell
--- Read-only
-function LockData:getInExterior()
-	return self.parent.cell.isInterior and not self.parent.cell.behavesAsExterior;
 end
 
 -- DetectedAt
@@ -228,13 +201,6 @@ function LockData.forgetAllKnownData()
 	Utility.Log.debug("Forgetting all known locks' data: %d", #knownLocks);
 	for k, v in pairs(knownLocks) do
 		clearExtraData(v.lock);
-		v.lock = nil;
-
-		if v.timer then
-			v.timer:cancel();
-		end
-
-		v.timer = nil;
 		knownLocks[k] = nil;
 	end
 
@@ -243,14 +209,15 @@ end
 
 -- Returns the lock data for a reference, or nil if it does
 -- not support any.
+---@param ref tes3reference
 function LockData.getForReference(ref)
 	if not supportsLockData(ref) then
-		return nil
+		return
 	end
 
 	local data = LockData:new();
 	data.parent = ref;
-	local lockAttachment = ref.attachments.lock;
+	local lockAttachment = ref.attachments.lock --[[@as tes3lockNode|nil]]
 
 	if lockAttachment then
 		data.key = lockAttachment.key;
